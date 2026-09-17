@@ -9,7 +9,6 @@ on:
 
 jobs:
   run-alert:
-
     runs-on: ubuntu-latest
 
     permissions:
