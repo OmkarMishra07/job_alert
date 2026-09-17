@@ -48,7 +48,7 @@ TELEGRAM_CHAT_ID = os.environ.get(
     ""
 )
 
-COMPANIES_FILE = "companies.json"
+COMPANIES_FILE = CONFIG_DIR / "companies.json"
 STATE_FILE = "seen_jobs.json"
 
 
