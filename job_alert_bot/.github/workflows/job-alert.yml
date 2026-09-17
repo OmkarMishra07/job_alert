@@ -1,0 +1,47 @@
+name: Job Alert Bot
+
+on:
+  schedule:
+    # 6:00 AM, 12:00 PM, 6:00 PM IST
+    - cron: '30 0,6,12 * * *'
+
+  workflow_dispatch:
+
+jobs:
+  run-alert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r job-alert-bot/requirements.txt
+
+      - name: Restore seen jobs
+        uses: actions/cache/restore@v4
+        with:
+          path: job-alert-bot/seen_jobs.json
+          key: seen-jobs
+          restore-keys: |
+            seen-jobs-
+
+      - name: Run job alert script
+        working-directory: job-alert-bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+        run: python job_alert.py
+
+      - name: Save seen jobs
+        uses: actions/cache/save@v4
+        with:
+          path: job-alert-bot/seen_jobs.json
+          key: seen-jobs-${{ github.run_id }}
