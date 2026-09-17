@@ -35,24 +35,41 @@
   "exclude_keywords": [
     "senior",
     "sr.",
+    "sr ",
     "staff",
     "principal",
     "lead",
     "manager",
     "director",
-    "architect",
     "head of",
+    "architect",
     "sde-2",
-    "sde2",
+    "sde 2",
+    "sde ii",
+    "sde-ii",
+
     "sde-3",
-    "sde3",
+    "sde 3",
+    "sde iii",
+    "sde-iii",
+
+    "software development engineer ii",
+    "software development engineer iii",
+    "software development engineer iv",
+
+    "software engineer ii",
+    "software engineer iii",
+    "software engineer iv",
     "3+ years",
     "4+ years",
     "5+ years",
     "6+ years",
     "7+ years",
     "8+ years",
-    "10+ years"
+    "9+ years",
+    "10+ years",
+    "11+ years",
+    "12+ years"
   ],
 
   "skill_keywords": [

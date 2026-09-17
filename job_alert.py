@@ -777,7 +777,39 @@ def send_telegram(job: Dict) -> bool:
         f"{TELEGRAM_BOT_TOKEN}/sendMessage"
     )
 
-    message = format_job_message(job)
+    # Use plain text first.
+    # This avoids MarkdownV2 parsing errors caused by
+    # company/job titles containing characters such as
+    # -, (, ), ., /, +, etc.
+    message = (
+        f"🚨 NEW JOB MATCH\n\n"
+        f"Company: {job.get('company', 'Unknown')}\n"
+        f"Role: {job.get('title', 'Unknown')}\n"
+        f"Location: {job.get('location', 'Not specified')}\n"
+        f"Match Score: {job.get('score', 0)}\n"
+        f"Skills: {', '.join(job.get('skills', [])) or 'Not specified'}\n"
+        f"Posted: {job.get('posted', 'Not specified')}\n"
+        f"Source: {job.get('authenticity', 'Official career source')}\n\n"
+    )
+
+    reasons = job.get("reasons", [])
+
+    if reasons:
+        message += "Why it matched:\n"
+
+        for reason in reasons[:5]:
+            message += f"• {reason}\n"
+
+        message += "\n"
+
+    apply_url = job.get("url", "")
+    career_url = job.get("career_url") or apply_url
+
+    if apply_url:
+        message += f"APPLY DIRECTLY:\n{apply_url}\n\n"
+
+    if career_url and career_url != apply_url:
+        message += f"COMPANY CAREERS:\n{career_url}\n"
 
     success = True
 
@@ -786,7 +818,6 @@ def send_telegram(job: Dict) -> bool:
         payload = {
             "chat_id": chat_id,
             "text": message,
-            "parse_mode": "MarkdownV2",
             "disable_web_page_preview": False,
         }
 
@@ -797,7 +828,15 @@ def send_telegram(job: Dict) -> bool:
                 timeout=30,
             )
 
-            response.raise_for_status()
+            # Don't hide Telegram's actual error.
+            if not response.ok:
+                print(
+                    f"Telegram API error for {chat_id}: "
+                    f"{response.status_code} "
+                    f"{response.text}"
+                )
+                success = False
+                continue
 
             data = response.json()
 
@@ -807,11 +846,12 @@ def send_telegram(job: Dict) -> bool:
                     f"{data}"
                 )
                 success = False
-            else:
-                print(
-                    f"Telegram alert sent to {chat_id}: "
-                    f"{job.get('title')}"
-                )
+                continue
+
+            print(
+                f"Telegram alert sent to {chat_id}: "
+                f"{job.get('title')}"
+            )
 
         except Exception as e:
             print(
