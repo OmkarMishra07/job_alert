@@ -48,9 +48,12 @@ TELEGRAM_CHAT_ID = os.environ.get(
     ""
 )
 
-COMPANIES_FILE = CONFIG_DIR / "companies.json"
-STATE_FILE = "seen_jobs.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_DIR = os.path.join(BASE_DIR, "config")
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
+COMPANIES_FILE = os.path.join(CONFIG_DIR, "companies.json")
+STATE_FILE = os.path.join(DATA_DIR, "seen_jobs.json")
 
 # ============================================================
 # TARGET ROLE KEYWORDS
