@@ -249,15 +249,32 @@ def save_json(filename, data):
 
 def load_companies():
 
+    print(
+        f"Looking for companies file at: "
+        f"{os.path.abspath(COMPANIES_FILE)}"
+    )
+
     default = {
         "greenhouse": [],
         "lever": []
     }
 
-    return load_json(
+    companies = load_json(
         COMPANIES_FILE,
         default
     )
+
+    print(
+        f"Loaded Greenhouse companies: "
+        f"{len(companies.get('greenhouse', []))}"
+    )
+
+    print(
+        f"Loaded Lever companies: "
+        f"{len(companies.get('lever', []))}"
+    )
+
+    return companies
 
 
 # ============================================================
