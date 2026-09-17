@@ -1,187 +1,45 @@
-#!/usr/bin/env python3
-
-"""
-Personal Job Alert Bot v2
-=========================
-
-Official ATS sources only:
-    - Greenhouse
-    - Lever
-
-Adzuna is intentionally disabled for now.
-
-Features:
-    - Fresher / 0-2 YOE filtering
-    - Java / Backend / Full Stack targeting
-    - SDE / ASE targeting
-    - Transparent match scoring
-    - Job deduplication
-    - Telegram job alerts
-    - Direct application links
-    - Company careers links
-
-Designed for:
-    - GitHub Actions
-    - Local execution
-"""
-
 import json
 import os
 import re
-import time
-from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Set
 
 import requests
 
-
-# ============================================================
-# CONFIG
-# ============================================================
-
-TELEGRAM_BOT_TOKEN = os.environ.get(
-    "TELEGRAM_BOT_TOKEN",
-    ""
-)
-
-TELEGRAM_CHAT_ID = os.environ.get(
-    "TELEGRAM_CHAT_ID",
-    ""
-)
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_DIR = os.path.join(BASE_DIR, "config")
-DATA_DIR = os.path.join(BASE_DIR, "data")
-
-COMPANIES_FILE = os.path.join(CONFIG_DIR, "companies.json")
-STATE_FILE = os.path.join(DATA_DIR, "seen_jobs.json")
-
-# ============================================================
-# TARGET ROLE KEYWORDS
-# ============================================================
-
-INCLUDE_KEYWORDS = [
-    "sde",
-    "sde-1",
-    "sde1",
-    "software engineer",
-    "software development engineer",
-    "software developer",
-    "software engineer i",
-
-    "associate software engineer",
-    "associate software developer",
-    "ase",
-
-    "java developer",
-    "java engineer",
-    "java backend",
-
-    "backend engineer",
-    "backend developer",
-    "backend software engineer",
-
-    "full stack engineer",
-    "full stack developer",
-    "fullstack engineer",
-    "fullstack developer",
-
-    "graduate engineer trainee",
-    "graduate software engineer",
-    "graduate engineer",
-
-    "entry level software engineer",
-    "entry-level software engineer",
-
-    "new grad software engineer",
-    "new graduate software engineer",
-
-    "software engineer intern",
-    "software developer intern",
-    "java intern",
-    "backend intern"
-]
+from sources.multi_ats import fetch_all
 
 
 # ============================================================
-# ROLES TO EXCLUDE
+# PATHS
 # ============================================================
 
-EXCLUDE_KEYWORDS = [
-    "senior",
-    "sr.",
-    "staff",
-    "principal",
-    "lead",
-    "manager",
-    "director",
-    "head of",
-    "architect",
+BASE_DIR = Path(__file__).resolve().parent
 
-    "sde-2",
-    "sde2",
-    "sde-3",
-    "sde3",
+CONFIG_DIR = BASE_DIR / "config"
+DATA_DIR = BASE_DIR / "data"
 
-    "3+ years",
-    "4+ years",
-    "5+ years",
-    "6+ years",
-    "7+ years",
-    "8+ years",
-    "9+ years",
-    "10+ years"
-]
+COMPANIES_FILE = CONFIG_DIR / "companies.json"
+STATE_FILE = DATA_DIR / "seen_jobs.json"
 
 
 # ============================================================
-# TECHNICAL SKILLS
+# TELEGRAM
 # ============================================================
 
-SKILL_KEYWORDS = [
-    "java",
-    "spring boot",
-    "spring",
-    "hibernate",
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
-    "sql",
-    "postgresql",
-    "mysql",
-    "mongodb",
-
-    "microservices",
-    "rest api",
-    "restful api",
-
-    "kafka",
-    "redis",
-
-    "docker",
-    "kubernetes",
-
-    "aws",
-    "azure",
-    "gcp",
-
-    "react",
-    "javascript",
-    "typescript",
-
-    "python",
-
-    "git",
-    "github",
-
-    "data structures",
-    "algorithms",
-    "dsa",
-
-    "system design"
-]
+# Optional: multiple users
+# Example:
+# TELEGRAM_CHAT_IDS=123456789,987654321
+TELEGRAM_CHAT_IDS = os.getenv("TELEGRAM_CHAT_IDS", "")
 
 
 # ============================================================
-# LOCATION KEYWORDS
+# JOB FILTER CONFIG
 # ============================================================
+
+MAX_YEARS_EXPERIENCE = 2
 
 PREFERRED_LOCATIONS = [
     "india",
@@ -195,932 +53,852 @@ PREFERRED_LOCATIONS = [
     "delhi",
     "mumbai",
     "chennai",
-    "remote"
+    "remote",
+]
+
+INCLUDE_KEYWORDS = [
+    "software engineer",
+    "software developer",
+    "software development engineer",
+    "sde",
+    "sde i",
+    "sde-1",
+    "sde 1",
+    "associate software engineer",
+    "ase",
+    "java developer",
+    "java engineer",
+    "backend engineer",
+    "backend developer",
+    "full stack engineer",
+    "full stack developer",
+    "fullstack engineer",
+    "fullstack developer",
+    "graduate engineer trainee",
+    "graduate software engineer",
+    "graduate developer",
+    "entry level",
+    "entry-level",
+    "new grad",
+    "software engineer intern",
+    "backend intern",
+    "developer intern",
+]
+
+EXCLUDE_KEYWORDS = [
+    "senior",
+    "sr.",
+    "sr ",
+    "staff",
+    "principal",
+    "lead",
+    "manager",
+    "director",
+    "head of",
+    "architect",
+    "sde-2",
+    "sde 2",
+    "sde-3",
+    "sde 3",
+    "3+ years",
+    "4+ years",
+    "5+ years",
+    "6+ years",
+    "7+ years",
+    "8+ years",
+    "9+ years",
+    "10+ years",
+    "11+ years",
+    "12+ years",
 ]
 
 
-MAX_YEARS_EXPERIENCE = 2
+SKILL_KEYWORDS = {
+    "Java": [
+        "java",
+    ],
+    "Spring Boot": [
+        "spring boot",
+    ],
+    "Spring": [
+        "spring",
+    ],
+    "Hibernate": [
+        "hibernate",
+    ],
+    "SQL": [
+        "sql",
+    ],
+    "PostgreSQL": [
+        "postgresql",
+        "postgres",
+    ],
+    "MySQL": [
+        "mysql",
+    ],
+    "MongoDB": [
+        "mongodb",
+        "mongo",
+    ],
+    "Microservices": [
+        "microservices",
+        "microservice",
+    ],
+    "REST API": [
+        "rest api",
+        "restful",
+        "rest api",
+    ],
+    "Kafka": [
+        "kafka",
+    ],
+    "Redis": [
+        "redis",
+    ],
+    "Docker": [
+        "docker",
+    ],
+    "Kubernetes": [
+        "kubernetes",
+        "k8s",
+    ],
+    "AWS": [
+        "aws",
+        "amazon web services",
+    ],
+    "Azure": [
+        "azure",
+    ],
+    "GCP": [
+        "gcp",
+        "google cloud",
+    ],
+    "React": [
+        "react",
+        "react.js",
+        "reactjs",
+    ],
+    "JavaScript": [
+        "javascript",
+        "js",
+    ],
+    "TypeScript": [
+        "typescript",
+        "ts",
+    ],
+    "Python": [
+        "python",
+    ],
+    "Git": [
+        "git",
+        "github",
+    ],
+    "DSA": [
+        "data structures",
+        "algorithms",
+        "dsa",
+    ],
+    "System Design": [
+        "system design",
+    ],
+}
 
 
 # ============================================================
-# JSON HELPERS
+# HELPERS
 # ============================================================
 
-def load_json(filename, default):
+def ensure_directories():
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    if not os.path.exists(filename):
-        return default
+
+def load_companies() -> List[Dict]:
+    """
+    New companies.json format:
+
+    {
+      "companies": [
+        {
+          "name": "Postman",
+          "source": "greenhouse",
+          "slug": "postman",
+          "careers_url": "https://www.postman.com/careers/",
+          "enabled": true
+        }
+      ]
+    }
+    """
+
+    if not COMPANIES_FILE.exists():
+        print(f"ERROR: Companies file not found: {COMPANIES_FILE}")
+        return []
 
     try:
+        with open(COMPANIES_FILE, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except Exception as e:
+        print(f"ERROR loading companies.json: {e}")
+        return []
 
-        with open(
-            filename,
-            "r",
-            encoding="utf-8"
-        ) as file:
+    companies = config.get("companies", [])
 
-            return json.load(file)
+    if not isinstance(companies, list):
+        print("ERROR: 'companies' must be a list in companies.json")
+        return []
 
-    except Exception as exc:
+    enabled_companies = []
 
-        print(
-            f"Could not read {filename}: {exc}"
-        )
+    for company in companies:
+        if not isinstance(company, dict):
+            continue
 
-        return default
+        if company.get("enabled", True) is False:
+            continue
 
+        if not company.get("name"):
+            continue
 
-def save_json(filename, data):
+        enabled_companies.append(company)
 
-    with open(
-        filename,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            data,
-            file,
-            indent=2,
-            ensure_ascii=False
-        )
+    return enabled_companies
 
 
-# ============================================================
-# LOAD COMPANIES
-# ============================================================
+def load_seen_jobs() -> Set[str]:
+    if not STATE_FILE.exists():
+        return set()
 
-def load_companies():
+    try:
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-    print(
-        f"Looking for companies file at: "
-        f"{os.path.abspath(COMPANIES_FILE)}"
-    )
+        if isinstance(data, list):
+            return set(str(x) for x in data)
 
-    default = {
-        "greenhouse": [],
-        "lever": []
-    }
+        if isinstance(data, dict):
+            jobs = data.get("seen_jobs", [])
+            return set(str(x) for x in jobs)
 
-    companies = load_json(
-        COMPANIES_FILE,
-        default
-    )
+    except Exception as e:
+        print(f"WARNING: Could not load seen jobs: {e}")
 
-    print(
-        f"Loaded Greenhouse companies: "
-        f"{len(companies.get('greenhouse', []))}"
-    )
-
-    print(
-        f"Loaded Lever companies: "
-        f"{len(companies.get('lever', []))}"
-    )
-
-    return companies
+    return set()
 
 
-# ============================================================
-# SEEN JOBS
-# ============================================================
+def save_seen_jobs(seen_jobs: Set[str]):
+    ensure_directories()
 
-def load_seen():
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(
+                sorted(seen_jobs),
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
 
-    data = load_json(
-        STATE_FILE,
-        []
-    )
-
-    return set(data)
-
-
-def save_seen(seen):
-
-    save_json(
-        STATE_FILE,
-        sorted(list(seen))
-    )
+    except Exception as e:
+        print(f"ERROR saving seen jobs: {e}")
 
 
-# ============================================================
-# HTML CLEANER
-# ============================================================
-
-def strip_html(text):
-
+def clean_text(text: str) -> str:
     if not text:
         return ""
 
-    text = re.sub(
-        r"<[^>]+>",
-        " ",
-        text
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
+    text = re.sub(r"<[^>]+>", " ", str(text))
+    text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
 # ============================================================
-# GREENHOUSE
+# JOB NORMALIZATION
 # ============================================================
 
-def fetch_greenhouse(company):
-
-    name = company["name"]
-    slug = company["slug"]
-
-    url = (
-        f"https://boards-api.greenhouse.io/"
-        f"v1/boards/{slug}/jobs?content=true"
-    )
-
-    print(
-        f"[Greenhouse] Checking {name}..."
-    )
-
-    try:
-
-        response = requests.get(
-            url,
-            timeout=20
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-    except Exception as exc:
-
-        print(
-            f"[Greenhouse:{name}] ERROR: {exc}"
-        )
-
-        return []
-
-    jobs = []
-
-    for job in data.get("jobs", []):
-
-        jobs.append({
-
-            "id": (
-                f"greenhouse:"
-                f"{slug}:"
-                f"{job.get('id')}"
-            ),
-
-            "title": job.get(
-                "title",
-                ""
-            ).strip(),
-
-            "company": name,
-
-            "location": (
-                job.get("location") or {}
-            ).get(
-                "name",
-                "Not specified"
-            ),
-
-            "url": job.get(
-                "absolute_url",
-                ""
-            ),
-
-            "career_url": company.get(
-                "careers_url",
-                ""
-            ),
-
-            "source": "Greenhouse",
-
-            "authenticity": (
-                "🟢 Official company careers"
-            ),
-
-            "posted": job.get(
-                "updated_at",
-                ""
-            ),
-
-            "description": strip_html(
-                job.get(
-                    "content",
-                    ""
-                )
-            )
-        })
-
-    print(
-        f"[Greenhouse] {name}: "
-        f"{len(jobs)} jobs found"
-    )
-
-    return jobs
-
-
-# ============================================================
-# LEVER
-# ============================================================
-
-def fetch_lever(company):
-
-    name = company["name"]
-    slug = company["slug"]
-
-    url = (
-        f"https://api.lever.co/"
-        f"v0/postings/{slug}?mode=json"
-    )
-
-    print(
-        f"[Lever] Checking {name}..."
-    )
-
-    try:
-
-        response = requests.get(
-            url,
-            timeout=20
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-    except Exception as exc:
-
-        print(
-            f"[Lever:{name}] ERROR: {exc}"
-        )
-
-        return []
-
-    jobs = []
-
-    for job in data:
-
-        categories = (
-            job.get("categories")
-            or {}
-        )
-
-        description = (
-            job.get(
-                "descriptionPlain"
-            )
-            or strip_html(
-                job.get(
-                    "description",
-                    ""
-                )
-            )
-        )
-
-        jobs.append({
-
-            "id": (
-                f"lever:"
-                f"{slug}:"
-                f"{job.get('id')}"
-            ),
-
-            "title": job.get(
-                "text",
-                ""
-            ).strip(),
-
-            "company": name,
-
-            "location": categories.get(
-                "location",
-                "Not specified"
-            ),
-
-            "url": job.get(
-                "hostedUrl",
-                ""
-            ),
-
-            "career_url": company.get(
-                "careers_url",
-                ""
-            ),
-
-            "source": "Lever",
-
-            "authenticity": (
-                "🟢 Official company careers"
-            ),
-
-            "posted": job.get(
-                "createdAt",
-                ""
-            ),
-
-            "description": description
-        })
-
-    print(
-        f"[Lever] {name}: "
-        f"{len(jobs)} jobs found"
-    )
-
-    return jobs
-
-
-# ============================================================
-# FETCH ALL JOBS
-# ============================================================
-
-def fetch_all_jobs(companies):
-
-    jobs = []
-
-    greenhouse = companies.get(
-        "greenhouse",
-        []
-    )
-
-    lever = companies.get(
-        "lever",
-        []
-    )
-
-    print(
-        f"Greenhouse companies: "
-        f"{len(greenhouse)}"
-    )
-
-    print(
-        f"Lever companies: "
-        f"{len(lever)}"
-    )
-
-    # Greenhouse
-    for company in greenhouse:
-
-        jobs.extend(
-            fetch_greenhouse(company)
-        )
-
-        time.sleep(0.5)
-
-    # Lever
-    for company in lever:
-
-        jobs.extend(
-            fetch_lever(company)
-        )
-
-        time.sleep(0.5)
-
-    return jobs
-
-
-# ============================================================
-# REMOVE DUPLICATE JOBS
-# ============================================================
-
-def deduplicate_jobs(jobs):
-
-    unique = {}
-
-    for job in jobs:
-
-        job_id = job.get("id")
-
-        if not job_id:
-            continue
-
-        unique[job_id] = job
-
-    return list(
-        unique.values()
-    )
-
-
-# ============================================================
-# JOB TEXT
-# ============================================================
-
-def get_job_text(job):
-
-    return (
-        f"{job.get('title', '')} "
-        f"{job.get('description', '')} "
-        f"{job.get('location', '')}"
-    ).lower()
-
-
-# ============================================================
-# ROLE MATCH
-# ============================================================
-
-def matches_role(job):
-
-    title = job.get(
-        "title",
-        ""
-    ).lower()
-
-    # Must contain target role
-    if not any(
-        keyword in title
-        for keyword in INCLUDE_KEYWORDS
-    ):
-        return False
-
-    # Must not contain excluded role
-    if any(
-        keyword in title
-        for keyword in EXCLUDE_KEYWORDS
-    ):
+def get_job_text(job: Dict) -> str:
+    parts = [
+        job.get("title", ""),
+        job.get("description", ""),
+        job.get("location", ""),
+        job.get("department", ""),
+        job.get("team", ""),
+        job.get("employment_type", ""),
+    ]
+
+    return clean_text(" ".join(str(x) for x in parts)).lower()
+
+
+def extract_experience_years(text: str):
+    """
+    Attempts to extract explicit experience requirements.
+
+    Examples:
+        0-2 years
+        1-3 years
+        2+ years
+        3 years experience
+        minimum 2 years
+    """
+
+    patterns = [
+        r"(\d+)\s*[-–]\s*(\d+)\s*years?",
+        r"(\d+)\s*\+\s*years?",
+        r"(\d+)\s*years?\s*(?:of)?\s*experience",
+        r"minimum\s*(?:of\s*)?(\d+)\s*years?",
+        r"at least\s*(\d+)\s*years?",
+    ]
+
+    matches = []
+
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            groups = match.groups()
+
+            try:
+                if len(groups) >= 2 and groups[1]:
+                    minimum = int(groups[0])
+                    maximum = int(groups[1])
+                    matches.append((minimum, maximum))
+                else:
+                    minimum = int(groups[0])
+                    matches.append((minimum, minimum))
+            except Exception:
+                continue
+
+    if not matches:
+        return None
+
+    # Return the lowest minimum experience requirement found.
+    return min(matches, key=lambda x: x[0])
+
+
+def is_experience_eligible(job: Dict) -> bool:
+    """
+    Keep fresher / entry-level / 0-2 YOE jobs.
+
+    Jobs with no explicit experience requirement are allowed,
+    because many fresher jobs do not mention experience.
+    """
+
+    text = get_job_text(job)
+
+    experience = extract_experience_years(text)
+
+    if experience is None:
+        return True
+
+    minimum_years, maximum_years = experience
+
+    if minimum_years > MAX_YEARS_EXPERIENCE:
         return False
 
     return True
 
 
 # ============================================================
-# EXPERIENCE CHECK
+# ROLE FILTER
 # ============================================================
 
-def extract_max_experience(text):
+def is_role_eligible(job: Dict) -> bool:
+    title = clean_text(job.get("title", "")).lower()
 
-    # Example:
-    # 0-2 years
-    match = re.search(
-        r"(\d+)\s*-\s*(\d+)\s*years?",
-        text
-    )
+    if not title:
+        return False
 
-    if match:
+    # Exclude clearly senior roles first.
+    for keyword in EXCLUDE_KEYWORDS:
+        if keyword.lower() in title:
+            return False
 
-        return int(
-            match.group(2)
-        )
+    # Then require one of our target roles.
+    for keyword in INCLUDE_KEYWORDS:
+        if keyword.lower() in title:
+            return True
 
-    # Example:
-    # 2+ years
-    match = re.search(
-        r"(\d+)\s*\+\s*years?",
-        text
-    )
-
-    if match:
-
-        return int(
-            match.group(1)
-        )
-
-    # Example:
-    # 2 years experience
-    match = re.search(
-        r"(\d+)\s*years?",
-        text
-    )
-
-    if match:
-
-        return int(
-            match.group(1)
-        )
-
-    return None
+    return False
 
 
-def matches_experience(job):
+# ============================================================
+# LOCATION FILTER
+# ============================================================
 
-    text = get_job_text(
-        job
-    )
+def location_matches(job: Dict) -> bool:
+    location = clean_text(job.get("location", "")).lower()
 
-    # Explicit fresher/entry-level wording
-    if any(
-        keyword in text
-        for keyword in [
-            "fresher",
-            "freshers",
-            "entry level",
-            "entry-level",
-            "new grad",
-            "new graduate",
-            "graduate engineer"
-        ]
-    ):
+    # If no location is provided, don't reject automatically.
+    if not location:
         return True
 
-    max_experience = extract_max_experience(
-        text
-    )
+    for preferred in PREFERRED_LOCATIONS:
+        if preferred.lower() in location:
+            return True
 
-    # If experience isn't mentioned,
-    # don't automatically reject it.
-    if max_experience is None:
-        return True
-
-    return (
-        max_experience
-        <= MAX_YEARS_EXPERIENCE
-    )
+    return False
 
 
 # ============================================================
-# SKILL DETECTION
+# SKILL MATCHING
 # ============================================================
 
-def detect_skills(job):
-
-    text = get_job_text(
-        job
-    )
+def extract_skills(job: Dict) -> List[str]:
+    text = get_job_text(job)
 
     found = []
 
-    for skill in SKILL_KEYWORDS:
+    for skill, keywords in SKILL_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword.lower() in text:
+                found.append(skill)
+                break
 
-        if skill in text:
-
-            if skill not in found:
-
-                found.append(
-                    skill
-                )
-
-    return found[:8]
+    return found
 
 
 # ============================================================
-# LOCATION MATCH
+# MATCH SCORING
 # ============================================================
 
-def location_match(job):
-
-    location = job.get(
-        "location",
-        ""
-    ).lower()
-
-    return any(
-        location_keyword in location
-        for location_keyword
-        in PREFERRED_LOCATIONS
-    )
-
-
-# ============================================================
-# MATCH SCORE
-# ============================================================
-
-def score_job(job, skills):
-
-    title = job.get(
-        "title",
-        ""
-    ).lower()
-
-    text = get_job_text(
-        job
-    )
+def score_job(job: Dict):
+    title = clean_text(job.get("title", "")).lower()
+    location = clean_text(job.get("location", "")).lower()
+    description = clean_text(job.get("description", "")).lower()
 
     score = 0
-
     reasons = []
 
-    # Target role
-    if any(
-        keyword in title
-        for keyword in [
-            "sde",
-            "software engineer",
-            "software development engineer",
-            "software developer",
-            "associate software engineer",
-            "ase"
-        ]
-    ):
+    # --------------------------------------------------------
+    # Role score
+    # --------------------------------------------------------
 
+    if "software engineer" in title:
         score += 30
+        reasons.append("Software Engineer role")
 
+    elif "software developer" in title:
+        score += 28
+        reasons.append("Software Developer role")
+
+    elif "sde" in title:
+        score += 30
+        reasons.append("SDE role")
+
+    elif "associate software engineer" in title:
+        score += 28
+        reasons.append("ASE role")
+
+    elif "backend" in title:
+        score += 25
+        reasons.append("Backend role")
+
+    elif "full stack" in title or "fullstack" in title:
+        score += 22
+        reasons.append("Full Stack role")
+
+    elif "java" in title:
+        score += 25
+        reasons.append("Java role")
+
+    # --------------------------------------------------------
+    # Fresher / entry-level
+    # --------------------------------------------------------
+
+    fresher_terms = [
+        "fresher",
+        "fresh graduate",
+        "graduate",
+        "new grad",
+        "entry level",
+        "entry-level",
+        "0-1 years",
+        "0-2 years",
+        "1-2 years",
+        "early career",
+    ]
+
+    for term in fresher_terms:
+        if term in title or term in description:
+            score += 20
+            reasons.append("Fresher/entry-level indication")
+            break
+
+    # --------------------------------------------------------
+    # Location
+    # --------------------------------------------------------
+
+    for location_keyword in PREFERRED_LOCATIONS:
+        if location_keyword.lower() in location:
+            score += 15
+            reasons.append(f"Preferred location: {location_keyword}")
+            break
+
+    # --------------------------------------------------------
+    # Skills
+    # --------------------------------------------------------
+
+    skills = extract_skills(job)
+
+    skill_score = min(len(skills) * 4, 25)
+
+    if skill_score:
+        score += skill_score
         reasons.append(
-            "Target software engineering role"
+            "Skills: " + ", ".join(skills[:6])
         )
 
-    # Java
-    if "java" in text:
+    # --------------------------------------------------------
+    # Direct Java preference
+    # --------------------------------------------------------
 
-        score += 20
-
-        reasons.append(
-            "Java mentioned"
-        )
-
-    # Spring Boot
-    if "spring boot" in text:
-
-        score += 15
-
-        reasons.append(
-            "Spring Boot mentioned"
-        )
-
-    elif "spring" in text:
-
+    if "java" in title:
         score += 10
+        reasons.append("Java explicitly mentioned in title")
 
-        reasons.append(
-            "Spring mentioned"
-        )
-
-    # Backend/full stack
-    if any(
-        keyword in text
-        for keyword in [
-            "backend",
-            "back-end",
-            "full stack",
-            "fullstack"
-        ]
-    ):
-
-        score += 15
-
-        reasons.append(
-            "Backend / Full Stack focus"
-        )
-
-    # Fresher
-    if any(
-        keyword in text
-        for keyword in [
-            "fresher",
-            "freshers",
-            "entry level",
-            "entry-level",
-            "new grad",
-            "new graduate",
-            "graduate"
-        ]
-    ):
-
-        score += 15
-
-        reasons.append(
-            "Fresher / entry-level"
-        )
-
-    # Preferred location
-    if location_match(job):
-
+    elif "java" in description:
         score += 5
+        reasons.append("Java mentioned in description")
 
-        reasons.append(
-            "Preferred location"
-        )
+    # --------------------------------------------------------
+    # Backend preference
+    # --------------------------------------------------------
 
-    return (
-        min(score, 100),
-        reasons
-    )
+    if "backend" in title:
+        score += 8
+        reasons.append("Backend explicitly mentioned")
+
+    # --------------------------------------------------------
+    # Internship / irrelevant reduction
+    # --------------------------------------------------------
+
+    if "intern" in title:
+        score -= 5
+
+    return score, skills, reasons
 
 
 # ============================================================
-# TIME SINCE POSTING
+# JOB DEDUPLICATION
 # ============================================================
 
-def minutes_since(timestamp):
+def get_job_id(job: Dict) -> str:
+    """
+    Prefer stable source IDs.
 
-    if not timestamp:
-        return None
+    Falls back to URL, then a title/company combination.
+    """
 
-    try:
+    source = str(job.get("source", "")).strip().lower()
+    source_id = str(job.get("source_id", "")).strip()
 
-        timestamp = timestamp.replace(
-            "Z",
-            "+00:00"
-        )
+    if source_id:
+        return f"{source}:{source_id}"
 
-        posted = datetime.fromisoformat(
-            timestamp
-        )
+    url = str(job.get("url", "")).strip()
 
-        if posted.tzinfo is None:
+    if url:
+        return url
 
-            posted = posted.replace(
-                tzinfo=timezone.utc
-            )
+    company = str(job.get("company", "")).strip().lower()
+    title = str(job.get("title", "")).strip().lower()
 
-        delta = (
-            datetime.now(timezone.utc)
-            - posted
-        )
+    return f"{company}|{title}"
 
-        return max(
-            int(
-                delta.total_seconds()
-                / 60
-            ),
-            0
-        )
 
-    except Exception:
+def deduplicate_jobs(jobs: List[Dict]) -> List[Dict]:
+    unique = {}
+    duplicates = 0
 
-        return None
+    for job in jobs:
+        job_id = get_job_id(job)
+
+        if job_id in unique:
+            duplicates += 1
+            continue
+
+        job["id"] = job_id
+        unique[job_id] = job
+
+    print(f"Unique jobs: {len(unique)}")
+    print(f"Duplicates removed: {duplicates}")
+
+    return list(unique.values())
+
+
+# ============================================================
+# AUTHENTICITY
+# ============================================================
+
+def get_authenticity(job: Dict) -> str:
+    source = str(job.get("source", "")).lower()
+
+    if source in {
+        "greenhouse",
+        "lever",
+        "workday",
+        "smartrecruiters",
+        "ashby",
+        "company_native",
+        "json_ld",
+    }:
+        return "Official company careers source"
+
+    return "Official career source"
 
 
 # ============================================================
 # TELEGRAM MESSAGE
 # ============================================================
 
-def format_job_message(job):
+def escape_markdown(text: str) -> str:
+    """
+    Telegram MarkdownV2 escaping.
+    """
 
-    mins = minutes_since(
-        job.get("posted")
-    )
+    if text is None:
+        return ""
 
-    if mins is None:
+    text = str(text)
 
-        detected = (
-            "Recently detected"
-        )
+    special_chars = r"_*[]()~`>#+-=|{}.!"
 
-    else:
+    for char in special_chars:
+        text = text.replace(char, "\\" + char)
 
-        detected = (
-            f"{mins} minutes after posting"
-        )
+    return text
 
-    skills = job.get(
-        "skills",
-        []
-    )
+
+def format_job_message(job: Dict) -> str:
+    company = escape_markdown(job.get("company", "Unknown Company"))
+    title = escape_markdown(job.get("title", "Unknown Role"))
+    location = escape_markdown(job.get("location", "Not specified"))
+
+    skills = job.get("skills", [])
 
     if skills:
-
-        skills_text = " • ".join(
-            skill.title()
-            for skill in skills
-        )
-
+        skills_text = escape_markdown(", ".join(skills))
     else:
+        skills_text = "Not specified"
 
-        skills_text = (
-            "Not specified"
+    score = job.get("score", 0)
+
+    authenticity = escape_markdown(
+        job.get(
+            "authenticity",
+            "Official company careers source",
         )
-
-    reasons = job.get(
-        "reasons",
-        []
     )
+
+    posted = escape_markdown(
+        str(job.get("posted", "Not specified"))
+    )
+
+    reasons = job.get("reasons", [])
+
+    reason_text = ""
 
     if reasons:
-
-        reasons_text = "\n".join(
-            f"✓ {reason}"
-            for reason in reasons
+        reason_text = "\n".join(
+            f"• {escape_markdown(reason)}"
+            for reason in reasons[:5]
         )
 
-    else:
+    url = job.get("url", "")
 
-        reasons_text = (
-            "✓ Keyword match"
-        )
+    career_url = job.get("career_url") or url
 
-    return (
-        "🚨 <b>NEW JOB MATCH</b>\n\n"
-
-        f"🏢 <b>COMPANY</b>\n"
-        f"{job['company']}\n\n"
-
-        f"💼 <b>ROLE</b>\n"
-        f"{job['title']}\n\n"
-
-        f"📍 <b>LOCATION</b>\n"
-        f"{job['location']}\n\n"
-
-        "🎓 <b>EXPERIENCE</b>\n"
-        "Fresher / 0–2 years\n\n"
-
-        f"🛠 <b>SKILLS</b>\n"
-        f"{skills_text}\n\n"
-
-        "━━━━━━━━━━━━━━\n"
-
-        f"⭐ <b>MATCH SCORE</b>: "
-        f"{job['score']}/100\n"
-
-        f"🔵 <b>SOURCE</b>: "
-        f"{job['authenticity']}\n"
-
-        f"🕒 <b>DETECTED</b>: "
-        f"{detected}\n\n"
-
-        "<b>WHY IT MATCHES</b>\n"
-        f"{reasons_text}"
+    message = (
+        "🚨 *NEW JOB MATCH*\n\n"
+        f"*{company}*\n"
+        f"*{title}*\n\n"
+        f"📍 {location}\n"
+        f"🎯 Match Score: *{score}*\n"
+        f"🛠 Skills: {skills_text}\n"
+        f"🕒 Posted: {posted}\n"
+        f"🔐 Source: {authenticity}\n\n"
     )
+
+    if reason_text:
+        message += "*Why it matched:*\n"
+        message += reason_text
+        message += "\n\n"
+
+    if url:
+        message += f"👉 *[APPLY DIRECTLY]({url})*\n"
+
+    if career_url and career_url != url:
+        message += f"🌐 *[Company Careers]({career_url})*\n"
+
+    return message
 
 
 # ============================================================
 # TELEGRAM SEND
 # ============================================================
 
-def send_telegram(job):
+def get_chat_ids() -> List[str]:
+    """
+    Supports both:
 
-    if not TELEGRAM_BOT_TOKEN:
+    TELEGRAM_CHAT_ID=123456789
 
-        print(
-            "ERROR: TELEGRAM_BOT_TOKEN "
-            "is missing."
+    OR
+
+    TELEGRAM_CHAT_IDS=123456789,987654321
+    """
+
+    ids = []
+
+    if TELEGRAM_CHAT_ID.strip():
+        ids.append(TELEGRAM_CHAT_ID.strip())
+
+    if TELEGRAM_CHAT_IDS.strip():
+        ids.extend(
+            x.strip()
+            for x in TELEGRAM_CHAT_IDS.split(",")
+            if x.strip()
         )
 
+    # Remove duplicates while preserving order.
+    return list(dict.fromkeys(ids))
+
+
+def send_telegram(job: Dict) -> bool:
+    if not TELEGRAM_BOT_TOKEN:
+        print("ERROR: TELEGRAM_BOT_TOKEN is not configured.")
         return False
 
-    if not TELEGRAM_CHAT_ID:
+    chat_ids = get_chat_ids()
 
-        print(
-            "ERROR: TELEGRAM_CHAT_ID "
-            "is missing."
-        )
-
+    if not chat_ids:
+        print("ERROR: No Telegram chat ID configured.")
         return False
 
     url = (
-        f"https://api.telegram.org/"
-        f"bot{TELEGRAM_BOT_TOKEN}/"
-        f"sendMessage"
+        f"https://api.telegram.org/bot"
+        f"{TELEGRAM_BOT_TOKEN}/sendMessage"
     )
 
-    text = format_job_message(
-        job
-    )
+    message = format_job_message(job)
 
-    keyboard = {
-        "inline_keyboard": [
-            [
-                {
-                    "text": "🚀 APPLY NOW",
-                    "url": job["url"]
-                }
-            ],
-            [
-                {
-                    "text": "🏢 COMPANY CAREERS",
-                    "url": (
-                        job.get(
-                            "career_url"
-                        )
-                        or job["url"]
-                    )
-                }
-            ]
-        ]
-    }
+    success = True
 
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-        "reply_markup": keyboard
-    }
+    for chat_id in chat_ids:
 
-    try:
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "MarkdownV2",
+            "disable_web_page_preview": False,
+        }
 
-        response = requests.post(
-            url,
-            json=payload,
-            timeout=20
-        )
-
-        response.raise_for_status()
-
-        result = response.json()
-
-        if not result.get("ok"):
-
-            print(
-                "Telegram API error:",
-                result
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                timeout=30,
             )
 
-            return False
+            response.raise_for_status()
 
-        return True
+            data = response.json()
 
-    except Exception as exc:
+            if not data.get("ok"):
+                print(
+                    f"Telegram API error for {chat_id}: "
+                    f"{data}"
+                )
+                success = False
+            else:
+                print(
+                    f"Telegram alert sent to {chat_id}: "
+                    f"{job.get('title')}"
+                )
 
-        print(
-            f"Telegram ERROR: {exc}"
-        )
+        except Exception as e:
+            print(
+                f"Telegram error for {chat_id}: {e}"
+            )
+            success = False
 
-        return False
+    return success
+
+
+# ============================================================
+# FILTER + SCORE
+# ============================================================
+
+def process_jobs(
+    jobs: List[Dict],
+    seen_jobs: Set[str],
+):
+    matched = []
+    already_seen = 0
+    rejected_role = 0
+    rejected_experience = 0
+    rejected_location = 0
+
+    for job in jobs:
+
+        job_id = get_job_id(job)
+
+        if job_id in seen_jobs:
+            already_seen += 1
+            continue
+
+        # ----------------------------------------------------
+        # Role
+        # ----------------------------------------------------
+
+        if not is_role_eligible(job):
+            rejected_role += 1
+            continue
+
+        # ----------------------------------------------------
+        # Experience
+        # ----------------------------------------------------
+
+        if not is_experience_eligible(job):
+            rejected_experience += 1
+            continue
+
+        # ----------------------------------------------------
+        # Location
+        # ----------------------------------------------------
+
+        if not location_matches(job):
+            rejected_location += 1
+            continue
+
+        # ----------------------------------------------------
+        # Score
+        # ----------------------------------------------------
+
+        score, skills, reasons = score_job(job)
+
+        job["id"] = job_id
+        job["score"] = score
+        job["skills"] = skills
+        job["reasons"] = reasons
+        job["authenticity"] = get_authenticity(job)
+
+        matched.append(job)
+
+    matched.sort(
+        key=lambda x: x.get("score", 0),
+        reverse=True,
+    )
+
+    print()
+    print("========== FILTER RESULTS ==========")
+    print(f"Total jobs fetched: {len(jobs)}")
+    print(f"Already seen: {already_seen}")
+    print(f"Rejected role: {rejected_role}")
+    print(f"Rejected experience: {rejected_experience}")
+    print(f"Rejected location: {rejected_location}")
+    print(f"New matching jobs: {len(matched)}")
+    print("====================================")
+    print()
+
+    return matched
 
 
 # ============================================================
@@ -1129,179 +907,130 @@ def send_telegram(job):
 
 def main():
 
-    print(
-        "=========================================="
-    )
-
-    print(
-        "        PERSONAL JOB ALERT BOT v2"
-    )
-
-    print(
-        "=========================================="
-    )
-
-    print(
-        "Source mode: OFFICIAL ATS ONLY"
-    )
-
-    print(
-        "Adzuna: DISABLED"
-    )
-
+    print()
+    print("==========================================")
+    print("       JOB ALERT BOT")
+    print("       Multi-ATS Edition")
+    print("==========================================")
     print()
 
+    ensure_directories()
+
     # --------------------------------------------------------
-    # Load configuration
+    # Load companies
     # --------------------------------------------------------
 
     companies = load_companies()
 
-    seen = load_seen()
-
     print(
-        f"Previously seen jobs: "
-        f"{len(seen)}"
+        f"Companies configured: {len(companies)}"
     )
 
+    if not companies:
+        print("No enabled companies found.")
+        return
+
+    # --------------------------------------------------------
+    # Load seen state
+    # --------------------------------------------------------
+
+    seen_jobs = load_seen_jobs()
+
+    print(
+        f"Previously seen jobs: {len(seen_jobs)}"
+    )
     print()
 
     # --------------------------------------------------------
-    # Fetch jobs
+    # Fetch from ALL configured ATS sources
+    #
+    # Greenhouse
+    # Lever
+    # Workday
+    # SmartRecruiters
+    # Ashby
+    # Company Native
+    # JSON-LD fallback
     # --------------------------------------------------------
 
-    all_jobs = fetch_all_jobs(
-        companies
-    )
-
-    all_jobs = deduplicate_jobs(
-        all_jobs
-    )
-
+    print("Fetching jobs from configured sources...")
     print()
 
+    try:
+        all_jobs = fetch_all(companies)
+    except Exception as e:
+        print(f"ERROR fetching jobs: {e}")
+        return
+
+    print()
     print(
-        f"Fetched {len(all_jobs)} "
-        f"unique jobs."
+        f"Total jobs collected from sources: "
+        f"{len(all_jobs)}"
     )
-
-    # --------------------------------------------------------
-    # Filter
-    # --------------------------------------------------------
-
-    matches = []
-
-    for job in all_jobs:
-
-        if not matches_role(job):
-            continue
-
-        if not matches_experience(job):
-            continue
-
-        if job["id"] in seen:
-            continue
-
-        skills = detect_skills(
-            job
-        )
-
-        score, reasons = score_job(
-            job,
-            skills
-        )
-
-        job["skills"] = skills
-        job["score"] = score
-        job["reasons"] = reasons
-
-        matches.append(
-            job
-        )
-
-    # Highest match first
-    matches.sort(
-        key=lambda job: job["score"],
-        reverse=True
-    )
-
-    print(
-        f"New matching jobs: "
-        f"{len(matches)}"
-    )
-
     print()
 
     # --------------------------------------------------------
-    # Telegram
+    # Deduplicate
     # --------------------------------------------------------
 
-    sent = 0
+    all_jobs = deduplicate_jobs(all_jobs)
 
-    for job in matches:
+    # --------------------------------------------------------
+    # Filter + Score
+    # --------------------------------------------------------
+
+    matching_jobs = process_jobs(
+        all_jobs,
+        seen_jobs,
+    )
+
+    # --------------------------------------------------------
+    # Send Telegram alerts
+    # --------------------------------------------------------
+
+    if not matching_jobs:
+        print("No new matching jobs found.")
+        save_seen_jobs(seen_jobs)
+        return
+
+    print(
+        f"Sending {len(matching_jobs)} "
+        f"new job alerts..."
+    )
+    print()
+
+    successfully_sent = 0
+
+    for job in matching_jobs:
 
         print(
-            f"[{job['score']}/100] "
-            f"{job['company']} - "
-            f"{job['title']}"
+            f"Sending: "
+            f"{job.get('company')} - "
+            f"{job.get('title')}"
         )
 
-        success = send_telegram(
-            job
-        )
+        success = send_telegram(job)
 
         if success:
-
-            seen.add(
-                job["id"]
+            seen_jobs.add(
+                get_job_id(job)
             )
-
-            sent += 1
-
-        time.sleep(0.5)
+            successfully_sent += 1
 
     # --------------------------------------------------------
     # Save state
     # --------------------------------------------------------
 
-    save_seen(
-        seen
-    )
-
-    # --------------------------------------------------------
-    # Summary
-    # --------------------------------------------------------
+    save_seen_jobs(seen_jobs)
 
     print()
+    print("==========================================")
+    print("RUN COMPLETE")
+    print(f"Alerts sent: {successfully_sent}")
+    print(f"Seen jobs stored: {len(seen_jobs)}")
+    print("==========================================")
+    print()
 
-    print(
-        "=========================================="
-    )
-
-    print(
-        f"Fetched: {len(all_jobs)}"
-    )
-
-    print(
-        f"New matches: {len(matches)}"
-    )
-
-    print(
-        f"Telegram alerts sent: {sent}"
-    )
-
-    print(
-        f"Seen jobs stored: {len(seen)}"
-    )
-
-    print(
-        "=========================================="
-    )
-
-
-# ============================================================
-# ENTRY POINT
-# ============================================================
 
 if __name__ == "__main__":
     main()

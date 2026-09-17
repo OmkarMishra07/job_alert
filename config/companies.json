@@ -1,9 +1,67 @@
 {
-  "greenhouse": [
-    { "name": "Postman", "slug": "postman", "careers_url": "https://www.postman.com/careers/" }
-  ],
-  "lever": [
-    { "name": "CRED", "slug": "cred", "careers_url": "https://careers.cred.club/" },
-    { "name": "Meesho", "slug": "meesho", "careers_url": "https://careers.meesho.io/" }
+  "companies": [
+    {
+      "name": "Postman",
+      "source": "greenhouse",
+      "slug": "postman",
+      "careers_url": "https://www.postman.com/careers/",
+      "enabled": true
+    },
+
+    {
+      "name": "CRED",
+      "source": "lever",
+      "slug": "cred",
+      "careers_url": "https://careers.cred.club/",
+      "enabled": true
+    },
+
+    {
+      "name": "Meesho",
+      "source": "lever",
+      "slug": "meesho",
+      "careers_url": "https://careers.meesho.io/",
+      "enabled": true
+    },
+
+    {
+      "name": "Razorpay",
+      "source": "lever",
+      "slug": "razorpay",
+      "careers_url": "https://razorpay.com/careers/",
+      "enabled": true
+    },
+
+    {
+      "name": "Zepto",
+      "source": "lever",
+      "slug": "zeptonow",
+      "careers_url": "https://www.zepto.com/careers",
+      "enabled": true
+    },
+
+    {
+      "name": "Paytm",
+      "source": "lever",
+      "slug": "paytm",
+      "careers_url": "https://paytm.com/careers/",
+      "enabled": true
+    },
+
+    {
+      "name": "Mindtickle",
+      "source": "lever",
+      "slug": "mindtickle",
+      "careers_url": "https://www.mindtickle.com/company/careers/",
+      "enabled": true
+    },
+
+    {
+      "name": "Hevo Data",
+      "source": "lever",
+      "slug": "hevodata",
+      "careers_url": "https://hevodata.com/careers/",
+      "enabled": true
+    }
   ]
 }
