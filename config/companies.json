@@ -1,10 +1,9 @@
 {
   "greenhouse": [
-    {
-      "name": "PhonePe",
-      "slug": "phonepe",
-      "careers_url": "https://www.phonepe.com/careers/"
-    }
+    { "name": "Postman", "slug": "postman", "careers_url": "https://www.postman.com/careers/" }
   ],
-  "lever": []
+  "lever": [
+    { "name": "CRED", "slug": "cred", "careers_url": "https://careers.cred.club/" },
+    { "name": "Meesho", "slug": "meesho", "careers_url": "https://careers.meesho.io/" }
+  ]
 }
